@@ -1,0 +1,745 @@
+---
+title: "FIT5149 S1 2009 Assessment 1: Choosing and Explaining Likely Caravan Insurance Customers"
+output:
+  word_document:
+    toc: yes
+  pdf_document:
+    highlight: tango
+    includes:
+      in_header: styles.sty
+    keep_tex: yes
+    number_sections: yes
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
+---
+
+```{r message=FALSE, warning=FALSE}
+library(caret)
+library(data.table)
+library(lattice)
+library(ggplot2)
+library(e1071)
+library(ISLR)
+library(dplyr)
+library(tidyverse)
+library(MASS)
+library(shiny)
+library(plotly)
+library(webshot)
+library(corrplot)
+library(RColorBrewer)
+library(MASS)
+library(clusterGeneration)
+library(glmnet)
+library(ca)
+library(car)
+library(usdm)
+library(ROCR)
+
+
+#webshot::install_phantomjs()
+
+```
+
+```{r}
+data=read.table("ticdata2000.txt")
+testdata=read.table("ticeval2000.txt")
+targetdata=read.table("tictgts2000.txt")
+```
+
+## 1. Data Exploration 
+
+### 1.1 Summary of Train Dataset
+
+There are  `r nrow(data)` Customers in the dataset with `r ncol(data)` attributes associated to each of them. 
+
+
+### 1.2 Checking for Missing values
+
+```{r}
+paste0("Missing values in the Dataset is : ", sum(is.na(data)))
+```
+
+### 1.3 Exploring different variable types
+
+```{r}
+str(data)
+```
+We can see all the variables in the dataset are integers with different levels
+
+### 1.4 Determining the ratio of Caravan Policy holders to Non caravan Policy Holders.
+
+```{r}
+pie<-data.frame(table(data$V86))
+ plot_ly(pie, labels = ~Var1, values = ~Freq, type = 'pie')%>%
+  layout(title = 'Number of Customers who purchased Caravan Policy',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+```
+We can determine from the above pie chart that number of people who are purchasing Caravan Policies are less when compared to people who are not purchasing. Approximately 6% of the whole customers list buy the policy.
+
+
+### 1.5 Determing the potential policy buyers based on Socio Demographic information provided.
+
+#### 1.5.1 Policy Buyers Vs Customer Subtype.
+
+```{r}
+Csubtype=data.frame(table(data$V1[data$V86==1]))
+ggplot(data=Csubtype,aes(x=Var1, y=Freq)) +
+geom_bar(stat="identity",fill="steelblue")+xlab("Customer SubType")+ylab("No of Customers")+
+ggtitle("Customes who purchased Caravan policy Vs Subtype")
+```
+The above graph shows potential policy holders based on Customer Subtype where we can say that Middle Class families and lower class with large families are more likely to buy the policy.
+
+#### 1.5.2 Policy Buyers Vs Age group 
+
+```{r}
+agegrp=table(data$V4[data$V86==1])
+names(agegrp)=c("20 to 30","30 to 40","40 to 50","50 to 60","60 to 70","70 to 80")
+AverageAge=data.frame(agegrp)
+ggplot(data=AverageAge,aes(x=Var1, y=Freq)) +
+geom_bar(stat="identity",fill=rainbow(6) )+xlab("Average Age")+ylab("No of Customers")+
+ggtitle("Customes who purchased Caravan policy Vs Average Age ")
+
+```
+The above graph shows that customers with the average age group 40 t0 50 are more likely to buy Policy.
+
+#### 1.5.3 Policy Buyers Vs Purchasing Power Class
+
+```{r}
+powerclass=data.frame(table(data$V43[data$V86==1]))
+ggplot(data=powerclass,aes(x=Var1, y=Freq)) +
+geom_bar(stat="identity",fill="steelblue")+xlab("Purchasing Power Class")+ylab("No of Customers")+
+ggtitle("Customes who purchased Caravan policy Vs Purchasing Power Class")
+```
+
+From The Above Graph we can observe that Customers who are of having purchaing power class (3)  are more likely to purchase the Caravan policy. Marketing professional can also target people segment purchaing power class(6 and 7)
+
+#### 1.5.4 Policy Buyers Vs Average income of the Customers
+
+```{r}
+aveincome=data.frame(table(data$V42[data$V86==1]))
+ggplot(data=aveincome,aes(x=Var1, y=Freq)) +
+geom_bar(stat="identity",fill=rainbow(8))+xlab("Average Income")+ylab("No of Customers")+
+ggtitle("Customes who purchased Caravan policy Vs Average Income")
+```
+
+From the above Graph we can observe the average Income of the people between these ranges ($100–$199,$200–$499,$500–$999) are likely to buy the Policy where $200-$499 being the highest.
+
+#### 1.5.5 Customer Main Type 
+
+```{r}
+Customer_MainType=data.frame(table(data$V5[data$V86==1]))
+ggplot(data=Customer_MainType,aes(x=Var1, y=Freq)) +
+geom_bar(stat="identity",fill="steelblue")+xlab("Customer Main Type")+ylab("No of Customers")+
+ggtitle("Customes who purchased Caravan policy Vs Customer Main Type")
+```
+From the above bar plot is slightly clear that Family with grown-ups(8) main type are likely to buy caravan policies than others.
+
+
+### 1.6 Determing the potential policy buyers based on Policy ownership information provided.
+
+#### 1.6.1 Policy Buyers Vs Household Members
+
+```{r}
+avgsize=data.frame(table(data$V3[data$V86==1]))
+p <- plot_ly(avgsize, labels = ~Var1, values = ~Freq, type = 'pie') %>%
+  layout(title = 'Number of people in the house Vs Purchase of Caravan Policy',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+p
+```
+From the above Pie chart we can observe that average size of 3 are likely to buy when compared to the others.
+
+#### 1.6.2 Different Policy holders Vs Caravan Policy Holders
+
+```{r}
+carpolicy=data.frame(table(data$V47[data$V86==1]))
+firepolicy=data.frame(table(data$V59[data$V86==1]))
+SocialSecurity=data.frame(table(data$V64[data$V86==1]))
+TrailerPolicy=data.frame(table(data$V72[data$V86==1]))
+
+p <- plot_ly() %>%
+  add_pie(data = carpolicy, labels = ~Var1, values = ~Freq,
+          name = "Car Policy", domain = list(x = c(0, 0.4), y = c(0.4, 1))) %>%
+  add_pie(data = firepolicy, labels = ~Var1, values = ~Freq,
+          name = "Fire Policy ", domain = list(x = c(0.6, 1), y = c(0.4, 1))) %>%
+  add_pie(data = SocialSecurity, labels = ~Var1, values = ~Freq,
+          name = "Social Security Policy", domain = list(x = c(0.25, 0.75), y = c(0, 0.6))) %>%
+  
+  layout(title = "Pie Charts showing different policies buyers Vs Carvan Policy purchasers ", 
+         showlegend = F,
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+p
+```
+1. The Chart on the left shows 75.3% of the Customers who buy Car policy with 6 level would buy Carvan policy.
+2. The chart on the right displays  43% of the customers who opt fire polies with level 4 would buy caravan Policy 
+3. The Pie in between shows as customers who buy no social securities(0 ) are tending to buy caravan policies.
+
+
+
+```{r}
+TrailerPolicy=data.frame(table(data$V72[data$V86==1]))
+life=data.frame(table(data$V76[data$V86==1]))
+van=data.frame(table(data$V69[data$V86==1]))
+
+p <- plot_ly() %>%
+  add_pie(data = TrailerPolicy, labels = ~Var1, values = ~Freq,
+          name = "Trailer Policy", domain = list(x = c(0, 0.4), y = c(0.4, 1))) %>%
+  add_pie(data = life, labels = ~Var1, values = ~Freq,
+          name = "Life Insurance Policy ", domain = list(x = c(0.6, 1), y = c(0.4, 1))) %>%
+  add_pie(data = van, labels = ~Var1, values = ~Freq,
+          name = "Van Delivery Policy", domain = list(x = c(0.25, 0.75), y = c(0, 0.6))) %>%
+  
+  layout(title = "Pie Charts showing different policies buyers Vs Carvan Policy purchasers ", 
+         showlegend = F,
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+p
+
+```
+From the above pie charts we can say that Trailer(Left), Life insurance(right),Van delivery(middle) Policies are inversly related to Caravan Policy as Customers who dont buy these policies will tend to .buy Caravan Policy.
+
+#### 1.6.3 Few Selected Vs Caravan Policy Holders
+
+
+```{r}
+No_of_boat_policies <- sum(data$V86 == 1 & data$V82 != 0)
+Married <- sum(data$V86 == 1 & data$V10  != 0)
+Other_relation <- sum(data$V86 == 1 & data$V12  != 0)
+boat_policies <- sum(data$V86 == 1 & data$V61  != 0)
+Skilled_labourers <- sum(data$V86 == 1 & data$V23  != 0)
+Lower_level_education <- sum(data$V86 == 1 & data$V18  != 0)
+
+
+dat <- data.frame(
+  Selected_Features = factor(c("V82","V10" , "V12" , "V61","V23", "V18" ), levels=c("V82","V10" , "V12" , "V61","V23", "V18")),
+  Count = c(No_of_boat_policies, Married , Other_relation , boat_policies , Skilled_labourers, Lower_level_education)
+)
+
+ggplot(data=dat, aes(x=Selected_Features, y=Count, fill=Selected_Features)) +
+  geom_bar(colour="black", stat="identity")
+```
+From the above graph it is partially clear that married people and low level education may buy Caravan policy.
+
+## 2 Prediction Task (Model Methodology and Development)
+
+### 2.1 Desired Variable Identification 
+
+We are interested in looking at the model which has minimum number of predictors(reduced complexity) and best accuracy. Hence choosing the predictors would be first step in developing a model.
+
+
+Data provided has both Nominal and Ordinal Variables. Hence identifying them would be initial step in the  process of elimination of variables.
+
+Looking at the Data dictionary we try to understand each variable's description, significance and distinct levels provided. Accordingly if the levels given have some kind of order we categorise it as Ordinal else nominal.
+
+The below are list of the variables which I think should be Nominal
+
+1. Customer Subtype
+2. Customer main type
+3. Protestant
+4. Other religion
+5. No religion
+6. Married
+7. Living together
+8. Other relation
+9. Singles
+10. 1 car
+11. 2 car
+12. No car
+13. Purchasing Power Class
+14. Caravan Policy
+
+```{r}
+# Converting the above Listed variables to factors
+data[,'V86']<-factor(data[,'V86'])
+data[,'V1']<-factor(data[,'V1'])
+data[,'V5']<-factor(data[,'V5'])
+data[,'V7']<-factor(data[,'V7'])
+data[,'V8']<-factor(data[,'V8'])
+data[,'V9']<-factor(data[,'V9'])
+data[,'V10']<-factor(data[,'V10'])
+data[,'V11']<-factor(data[,'V11'])
+data[,'V12']<-factor(data[,'V12'])
+data[,'V13']<-factor(data[,'V13'])
+data[,'V43']<-factor(data[,'V43'])
+data[,'V32']<-factor(data[,'V32'])
+data[,'V33']<-factor(data[,'V33'])
+data[,'V34']<-factor(data[,'V34'])
+
+var=c('V1','V5','V7','V8','V9','V10','V11','V12','V13','V43','V32','V33','V34','V86')
+var1=c('V1','V5','V7','V8','V9','V10','V11','V12','V13','V43','V32','V33','V34')
+
+# Creating a separate Dataset for Nominal Variables
+data_sub_nominal=data[,c(var)]
+# Creating a data set for Ordinal Variables
+data[ ,c(var1)] <- list(NULL)
+
+```
+
+### 2.2 Oridinal Variables Reduction 
+
+#### 2.2.1 Identification of near zero variance predictors for Oridinal Variables
+
+Let's check the near zero variance predictors, which have the following two characteristics
+    1. They have very few unique values relative to the number of samples.
+    2. The ratio of the frequency of the most common value to the frequency of the second most common value is large.
+    
+This kind of predictor is non-informative, it can break some models which you may want to fit to your data. Hence we need to remove them.
+
+
+```{r}
+nzv <- nearZeroVar(data, saveMetrics = TRUE)
+tmp=nzv[nzv$nzv==FALSE,] # temporary variable to store required variables
+setDT(tmp,keep.rownames = TRUE)
+tmp1=nzv[nzv$nzv==TRUE,] # temporary variable to store unwanted variables
+setDT(tmp1,keep.rownames = TRUE)
+
+ggplot(data=tmp1,aes(x=rn, y=percentUnique))+
+  geom_bar(stat="identity",fill="steelblue")+ ggtitle("Percent Unique of unwanted Variables ")
+
+ggplot(data=tmp,aes(x=rn, y=percentUnique))+
+  geom_bar(stat="identity",fill="steelblue")+ ggtitle("Percent Unique of required Variables ")
+
+ggplot(data=tmp,aes(x=rn, y=freqRatio))+
+  geom_bar(stat="identity",fill="steelblue")+ ggtitle("Frequency Ratio of required Variables ")
+
+ggplot(data=tmp1,aes(x=rn, y=freqRatio))+
+  geom_bar(stat="identity",fill="steelblue")+ ggtitle("Frequency Ratio of Unwanted Variables ")
+
+
+```
+The above four Graphs shows the output of NZV function with the required variables for the model and variables which has to thrown out. The nearZerovariance() has been set to default cutoffs with frequency cutoff as 95/5 and UniqueCut to be 10.
+
+Chart 1 and 2 Displays uniqueness in the variables where as chart 3 and 4 shows frequency Ratio that is the ratio of frequencies for the most common value over the second most common value.
+
+We can also see there are no zerovariance Variables,however there are near zero variance.
+
+
+```{r}
+# Considering Only the required variables as per nearzerovariacce() function
+data_subset=data[,unlist(tmp[,1])]
+
+```
+
+#### 2.2.2 Determining the inter-correlation between variables(Collinearity). 
+
+These inter variable interations degrade the model performance. Hence We need to remove one of the variables. 
+
+Lets us look into correaltions visually
+```{r}
+correlation=cor(data_subset[,-length(unlist(tmp[,1]))])
+corrplot(correlation, type="upper", order="hclust",
+         col=brewer.pal(n=8, name="RdYlBu"))
+```
+From the above Correlation plot we can observe that there are attributes which are inter-correlated among themselves. Hence keeping these correlated attributes in the model may affect prediction results.
+
+
+findCorrelation() searches through a correlation matrix and returns a vector of integers corresponding to columns to remove to reduce pair-wise correlations.
+```{r}
+#Identifying correlated variables and removing them.
+highCor <- findCorrelation(correlation, cutoff = 0.9)# Setting Cutoff to 0.75 as any pair-wise correlation above 0.75 is considered high and may break the model 
+
+data=data_subset[,-highCor] #removing them
+
+```
+
+The highly correlated variables in the dataset are `r highCor`.
+
+The Total number of attributes remaining after removal of Near Zero variance predictors and highCorrelated Variables is `r ncol(data)`
+
+
+Lets Plot Correlation plot again Visualize the relations.
+```{r}
+corrplot(cor(data[-ncol(data)]), type="upper", order="hclust",
+         col=brewer.pal(n=8, name="RdYlBu"))
+```
+We observe that the attributes which were highly correlated, for instance V47 and V68 (car policies) in the previous cor-plot , One of them has been removed there by reducing inter-variable interactions.However there are still correlated which is due to multi-Collinearity. 
+
+
+#### 2.2.3 Interpretting the Good set of predictors Using Lasso Regression.
+
+Lasso is a regression analysis method that performs both variable selection and regularization in order to enhance the prediction accuracy of the model.It forces the predictor intercepts to Zero. Hence we can select best predictors by selecting only non Zero predictors.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data$V86=as.numeric(as.character(data$V86))
+xmat <- model.matrix(V86 ~., data = data)
+xmat <- xmat[, -1]
+cv.lasso <- cv.glmnet(xmat, data$V86, alpha = 1)
+plot(cv.lasso)
+
+```
+The plot above shows log(lambda) Vs Mean Squred Error. We can see the two vertical lines where fisrt from left showslambda value which has least Mean-Squared Error and second line shows lambda with 1 stadard devaition error.
+
+We can access the min value by using the code below and fit the model using glmnet.
+```{r}
+bestlam <- cv.lasso$lambda.min
+fit.lasso <- glmnet(xmat, data$V86, alpha = 1)
+```
+
+The best lambda value obtained is `r bestlam` and we predict the values based on best lambda obtained.
+
+```{r}
+variables=data.frame(predict(fit.lasso, s = bestlam, type = "coefficients")[1:ncol(data),])
+setDT(variables,keep.rownames = TRUE)
+names(variables) <- c("variables", "Intercept")
+
+```
+The variables which has to be removed are  
+`r variables$variables[variables$Intercept==0]`. 
+and variables which are having some level of significance are 
+`r variables$variables[variables$Intercept!=0]`.
+
+```{r}
+data=data[,c("V2","V3","V4" ,"V6","V15","V16","V18","V21","V22","V23","V26","V28","V31","V35","V38","V40", "V41","V42" ,"V44", "V59", "V68", "V75" ,"V80","V86")]
+```
+
+#### 2.2.3 Variance Inflation Factors
+
+Let us Cross-Validate this using Variance Inflation Factors which identifies if there are multiple-collinearity between the preditors
+
+A VIF of 1 means that there is no correlation among the k-th predictor and the remaining predictor variables, and hence the variance of the k-th coefficient is not inflated at all. The general rule of thumb is that VIFs exceeding 4 warrant further investigation, while VIFs exceeding 10 are signs of serious multicollinearity requiring correction.
+
+
+```{r}
+inflation_var=vifcor(cor(data[,-24]),th=0.8)
+inflation_var
+```
+From the Above we can say that there are multi-collinearity in the variables which are obtained.
+
+```{r}
+a=inflation_var@excluded
+data[ ,c(a)] <- list(NULL)
+```
+
+
+###2.3 Nominal Variables Reduction
+
+Nominal Variables Significance are determined using Chi-Sq test where hypothesis is stated and depending  on the p-value we accept or reject.
+
+#### 2.3.1 Chi-Square test for Nominal Variables(factors)
+
+Our hypothesis for all the variables with target variable will be
+
+H0: Caravan Policy is Independant of variable X 
+HA: caravan policy is not Independant of Variable X
+
+```{r}
+chisq_t=data.frame(mapply(function(x, y) chisq.test(x, y)$p.value, data_sub_nominal[, -14], 
+                      MoreArgs=list(data_sub_nominal[,14])))
+setDT(chisq_t,keep.rownames = TRUE)
+names(chisq_t) <- c("variable", "p_value")
+
+ggplot(data=chisq_t,aes(x=variable, y=p_value)) +
+  geom_bar(stat="identity",fill="steelblue")
+
+```
+The Chi-Square Test shows some varaibles are dependant and others are not.  
+Cosidering the variables for regression based on the above graph which is P-value Vs Variables,  we get V1,V10,V32,V34,V43,V5 as dependant. 
+
+```{r}
+# Subsetting only the required variables
+
+data_sub_nominal=data_sub_nominal[,c('V1','V10','V12','V32','V34','V43','V5')]
+```
+
+#### 2.3.2 Inter-correlation(Interaction) between these categorical variables.
+
+Interactions can be determined by plotting the two variables as shown below
+
+```{r}
+mytable <- with(data_sub_nominal, table(V1,V5)) # create a 2 way table
+prop.table(mytable, 1) # row percentages
+prop.table(mytable, 2) # column percentages
+fit <- ca(mytable)
+print(fit) # basic results 
+plot(fit) # symmetric map
+```
+From the above graph we can say that both the dimension points lie exactly one top of another. Hence V1 and V5 are highly correlated.
+
+Likewise for V32 and V34
+
+```{r}
+mytable <- with(data_sub_nominal, table(V32,V34)) # create a 2 way table
+prop.table(mytable, 1) # row percentages
+prop.table(mytable, 2) # column percentages
+fit <- ca(mytable)
+print(fit) # basic results 
+plot(fit) # symmetric map
+
+```
+Even V34 and V32 are also closely related.Hence these are intercorrelated.
+
+Similarly when we compute for other combinations we get V1+V5+V43,v32+V34 , V32+V10 , V32+V12  are all correlated. Therefore we just keep  one of the variable as predictors. I chose V43 and V32 as predictors from this group of nominal variables.
+
+```{r}
+# Merging the two Dataframes of Nominal and Ordinal
+
+data_sub_nominal=data_sub_nominal[,c('V43','V32')]
+data=cbind(data_sub_nominal,data)
+
+```
+
+
+Using GLM to find the significance of the variables which also helps in variable selection
+```{r}
+logit <- train(V86~., data=data, method='glm', family=binomial(link='logit'), 
+               preProcess=c('scale', 'center'))
+summary(logit)
+```
+From the Summary it is clear that V44,V68,V59,V21,V31,V43 are more significant when compared to others. Variable importance can also be viewed through the plot below.
+
+
+```{r}
+plot(varImp(logit, scale = TRUE), main = "Variable importance for logistic regression")
+
+```
+The Graph Above shows the variable significance in the model development. Hence I consider variables which are having more 40% for prediction task.
+
+
+## 3. Model Development 
+
+
+1. First we divide the data into Train and Test
+
+```{r}
+# Dividing the dataset 75/25 ratio where 75 is Train and  25 is Test
+inTrain <- createDataPartition(y = data$V86, p = 0.75, list = FALSE)
+train <- data[inTrain,]
+test <- data[-inTrain,]
+train[,'V86']<-factor(train[,'V86'])
+test[,'V86']<-factor(test[,'V86'])
+```
+
+### 3.1 Predicting using Generalised Linear Model
+
+Model Description: 
+
+Logistic regression model is generalised version of linear model which can be applied when we dont have any idea of data and attribute significance. It is suggested that if the output is binary using GLM would be give better results, It also provides the flexibilty to set the probablity threshold. It works good when we have both mix and nominal,ordinal and continous attributes.
+
+
+Applying GLM on the Train dataset with the selected predictors 
+
+```{r}
+
+m1=glm(V86~V44+V68+V21+V31+V43,data=train,family="binomial")
+summary(m1)
+```
+* Deviance Residual : In the first part of the summary tells badness of the fit. Higher the residual deviance worse is the fit, The residual deviance shown in the summary result above looks roughly symmetric.
+
+The next part of the output shows the coefficients, their standard errors, the z-statistic, and the associated p-values
+
+* Coeficients : 
+
+  1. Intercepts:The logistic regression coefficients gives the change in the log odds of the outcome for a one unit increase in the predictor variable.For Instance every unit change in V44 log odds of V86 change by 0.322
+
+2. Z-value: The z-value is the regression coefficient divided by its standard error.
+
+3. P-value : Shows the probablity value and stars next to that identifies significance level.
+
+4. Std.Error - Error in the estimates 
+
+
+* NUll deviance: shows how well our target variable is predicted given only intercept. In our case its 1993.2
+
+* Residual deviance : Shows how well the model fits into train set
+
+* AIC : It is the way of accessing the model peformance. It penalises the model if there are many predictors. Less the AIC better the model. In our case it is 1844.4
+
+
+
+```{r}
+#calucating the probablities using predict
+probabilities <- predict(m1, test[-ncol(test)], type = "response")
+predicted <- ifelse(probabilities > 0.5,1,0)
+#observed.classes=targetdata$V1
+mean(predicted == test$V86)
+
+# Displaying the confusion Matrix of all possible True false positve and negative cases
+u <- union(predicted, test$V86)
+t <- table(factor(predicted, u), factor(test$V86, u))
+confusionMatrix(t,positive='1')
+```
+The model shows accuracy of 94% where it has  specificity is high and sensitivity is low. This model is not all predicting the correct 1's. Its more like saying just add zero to all targets and still you end up in more accurate results.
+
+It may be because of dataset is unbalanced with very less number of 1's than 0's; We shall try putting this into testset provided and compare the results.
+
+Anova Test for Model Attributes: 
+```{r}
+anova(m1, test = "Chisq")
+```
+Anova Function gives the deviance table where one can analyse as how deviance varies when an attribute is added to model. 
+
+Here we can see all predictors are significant with significance value very much less than 0.05.
+
+```{r}
+with(m1, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE))
+```
+
+The chi-square of 172.8 with 11 degrees of freedom and an associated p-value of less than  tells us that our model as a whole fits significantly better than an empty model. 
+
+
+
+Applying Model to Original Test Data 
+
+```{r}
+#Converting the variables in Test data.
+testdata[,'V1']<-factor(testdata[,'V1'])
+testdata[,'V5']<-factor(testdata[,'V5'])
+testdata[,'V7']<-factor(testdata[,'V7'])
+testdata[,'V8']<-factor(testdata[,'V8'])
+testdata[,'V9']<-factor(testdata[,'V9'])
+testdata[,'V10']<-factor(testdata[,'V10'])
+testdata[,'V11']<-factor(testdata[,'V11'])
+testdata[,'V12']<-factor(testdata[,'V12'])
+testdata[,'V13']<-factor(testdata[,'V13'])
+testdata[,'V43']<-factor(testdata[,'V43'])
+testdata[,'V32']<-factor(testdata[,'V32'])
+testdata[,'V33']<-factor(testdata[,'V33'])
+testdata[,'V34']<-factor(testdata[,'V34'])
+```
+
+Finding the probablities of test set
+
+```{r}
+probabilities <- predict(m1, testdata, type = "response")
+
+# Code Block to set threshold
+testdata1=testdata
+testdata1$prob=probabilities
+testdata1 <- testdata1[order(-testdata1$prob),] # arranging in Descending order of their probablities
+threshold=testdata1$prob[800] # Picking the threshold to be 800th customer's probablity
+
+predicted <- ifelse(probabilities >=threshold,1,0)
+observed.classes=targetdata$V1
+mean(predicted == observed.classes)
+
+# Creation of Confusion Matrix
+u <- union(predicted, observed.classes)
+t <- table(factor(predicted, u), factor(observed.classes, u))
+confusionMatrix(t,positive='1')
+
+```
+The Confusion Matrix Displays out of top 809 Customers who are potential, 105 are correctly predicted and hence the sensitivity and specificity of the model turns out to be 44.1% and 81.2% respectivly. The overall accuarcy of the model gives approximately 79%  
+
+
+### 3.2 Predicting Using Naive Bayes 
+
+Model Description:
+
+It is machine learning technique which is purely based on Bayes theorem with strong Independence assumptions among the predictors. 
+This Model would be worth of applying as we have removed all the intercorrelations/Collinearity between the model and also we have case of classifying the customers.  
+
+```{r}
+modelnaive <- naiveBayes(V86~V44+V68+V21+V31+V43, data=train)
+modelnaive
+```
+1. The model summary gives the conditional probablities of the predictors which is in tables
+2. Level : Displays the level in the output.
+3. apriori : Displays A-priori probabilities.
+
+```{r}
+probabilities <- predict(modelnaive, test[-ncol(test)], type = "class")
+observed.classes=test$V86
+mean(probabilities == observed.classes)
+
+u <- union(probabilities, observed.classes)
+t <- table(factor(probabilities, u), factor(observed.classes, u))
+confusionMatrix(t,positive='1')
+
+```
+The Confusion Matix shows Sensitivity as Zero and Specificity to 99.85% and the overall percentage fit is 94.09%
+
+
+Appplying the Model on Original TestData 
+```{r}
+probabilities <- data.frame(predict(modelnaive, testdata, type = "raw"))
+# Reordering the dataframe to get 800 customers
+testdata1=testdata
+testdata1$prob=probabilities$X1
+testdata1 <- testdata1[order(-testdata1$prob),] # arranging in Descending order of their probablities
+threshold=testdata1$prob[800] # Picking the threshold to be 800th customer's probablity
+
+predicted.classes <- ifelse(probabilities$X1 >= threshold, "1", "0") #Predicting the probablities
+observed.classes=targetdata$V1
+mean(predicted.classes == observed.classes)
+
+u <- union(predicted.classes, observed.classes)
+t <- table(factor(predicted.classes, u), factor(observed.classes, u))
+confusionMatrix(t,positive='1')
+
+```
+The Confusion Matrix Displays out of top 805 Customers who are potential, 104 are correctly predicted and hence the sensitivity and specificity of the model turns out to be 43.7% and 81.39% respectivly. The overall accuarcy of the model gives approximately 79%  
+
+
+## 4 Model Comparison
+
+ROC Curve shows the trade off between sensitvity and Specificity; Hence we try to plot ROC curve for both the methods and Check for Area under curve.
+
+This is the test with perfect classification has a ROC curve that passes through the upper left corner. This proves that it has 100% both Sensisitivity and Specificity. Therefore the closer the ROC curve is to the upper left corner, the higher the overall accuracy of the test. 
+
+Sensitivity of a model is portion of correctly positively predicted cases (True Positives) whereas specificity is the portion of correctly negatively predicted cases(False Positives).We will further discuss on numbers which model has more sensitivity and specificity.
+Naive Bayes Classification : 
+
+ROC Curve for Naive Bayes
+```{r}
+probabilities <- predict(modelnaive, test[-ncol(test)], type = "raw")
+NBPred <- prediction(probabilities[,2], test$V86)
+NBPerf <- performance(NBPred, "tpr", "fpr")
+plot(NBPerf, colorize=TRUE)
+abline(a=0, b=1, lty=2, lwd=3, col="black")
+
+```
+
+```{r} 
+# The Area Under the Curve 
+performance(NBPred, "auc")
+```
+
+
+Generarlised Linear Model
+
+```{r}
+probs=predict(m1, test, type = "response")
+LRPred <- prediction(probs, test$V86)
+LRPerf <- performance(LRPred, "tpr", "fpr")
+plot(LRPerf, colorize=TRUE)
+abline(a=0, b=1, lty=2, lwd=3, col="black")
+```
+
+```{r}
+performance(LRPred, "auc")
+```
+
+    Naive bayes considers 805 Customers who are potential out of which 104 are correctly predicted and hence the sensitivity the model is 43.7% .Inversely specificity is 81.39% where as GLM considers 809 Customers who are potential out of which it has correctly predicted 105 Customers and hence sensitiity is 44.1% and inversely Specificity is 81.2% 
+
+    ROC curve also proves the GLM has more Area Under the Curve (72.4%) than compared to Naive Bayes(71.8%).As per this GLM is giving more accuracy. Hence GLM would be best for the current Scenario.
+
+    However both the models are giving nearly same accuracy. Trying the same with different training and test partition would be usefull in better selection of model.
+
+
+## 5 Summary for Marketing
+
+
+    Clearly from the Exploratory Analysis we have found that the one best potential indicator of buying Caravan Policy is the customer who is having a car insurance policy where contribution is level 6. Customer Subtype is hard to find as there are few customers buying it. However EDA shows customer subtype with level 8 and 33 are potential.
+
+    Secondly Household with three people have 50% of chances to buy the policy. Other variables like Customer Main type, Education level, Status, Average Income, Average Age have good correlations but in the model they are eliminated as they might be linear/multiple-collinearity. From the model parameters we get Contribution private third party insurance, Home Owners, Contribution to fire policy shows significance impact on the predicting model. 
+    
+    In conclusion we can say person who is having Car insurance policy / Contribution towards it, have level 7 Purchasing power class, a private third party insurance policy and Social security policy have high tendency to buy. Likewise Customers who are having no trailer/tractor/life insurance policies are intended to buy.
+
+    The Process followed for eliminating the variables is as follows,
+      
+      Divide the Dataset into two Parts, Ordinal and Nominal Variables where both have predictors. For Ordinal variables remove Near Zero Variance and high Correlation between each other through functions defined earlier. Applied lasso reduction technique followed by Variance Inflation Checker for reducing Multi-collinearity. Then used GLM to check significance of the variables
+
+    On the other hand, for Nominal Variables I used chi-Sq test to determine p-values followed by removing inter-correlated variables through graphical methods. Then merged the two dataframes and used modeling techniques to predict the Caravan policy.
+
+ 
+
+
+
